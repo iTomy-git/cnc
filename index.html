@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="sl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CNC quote — Stroški & Čas</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;max-width:900px;margin:0 auto;padding:12px;background:#f6f7fb;color:#111}
+  header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  h1{font-size:20px;margin:0}
+  .card{background:#fff;border:1px solid #e0e4ea;border-radius:8px;padding:12px;margin-bottom:12px}
+  label{display:block;font-weight:600;margin-top:8px;font-size:13px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  input[type="number"], input[type="text"], select{padding:8px;border:1px solid #cfd6e3;border-radius:6px;min-width:80px}
+  .small{width:80px}
+  .big{flex:1;min-width:140px}
+  button{background:#2b7be4;color:white;border:none;padding:10px 12px;border-radius:8px;font-weight:700;cursor:pointer;margin-top:10px}
+  button.secondary{background:#6c757d}
+  .ops{margin-top:8px}
+  .op{border:1px dashed #cbd6e6;padding:8px;border-radius:6px;margin-bottom:8px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start}
+  .op-fields{display:flex;flex-wrap:wrap;gap:8px}
+  .result{font-size:16px;font-weight:700;margin-top:8px}
+  .muted{color:#666;font-weight:600;font-size:13px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .save-load{display:flex;gap:6px;margin-top:6px}
+  footer{font-size:12px;color:#666;margin-top:12px;text-align:center}
+  @media (max-width:520px){ .op{grid-template-columns:1fr; } .row{flex-direction:column;align-items:stretch} }
+</style>
+</head>
+<body>
+<header><h1>CNC quote — Stroški & Čas</h1></header>
+
+<div class="card">
+  <div class="muted">Mere, strošek materiala in količina</div>
+  <label>Material</label>
+  <div class="row">
+    <select id="materialSelect" class="big">
+      <option value="steel" data-density="7.85">Jeklo — 7.85 g/cm³</option>
+      <option value="aluminium" data-density="2.70">Aluminij — 2.70 g/cm³</option>
+      <option value="brass" data-density="8.50">Medenina — 8.50 g/cm³</option>
+      <option value="plastic" data-density="1.20">Plastika — 1.20 g/cm³</option>
+      <option value="custom">Lastna gostota...</option>
+    </select>
+    <input id="density" class="small" type="number" step="0.01" min="0" value="7.85" /> <div class="muted" style="align-self:center">g/cm³</div>
+  </div>
+
+  <label>Dimenzije</label>
+  <div class="row">
+    <input id="height" type="number" class="small" placeholder="Višina (H)" value="50" /> <select id="unitH"><option>mm</option><option>cm</option><option>m</option></select>
+    <input id="width" type="number" class="small" placeholder="Dolžina" value="50" /> <select id="unitW"><option>mm</option><option>cm</option><option>m</option></select>
+    <input id="thickness" type="number" class="small" placeholder="Debelina" value="10" /> <select id="unitT"><option>mm</option><option>cm</option><option>m</option></select>
+    <input id="pricePerKg" type="number" class="small" step="0.01" placeholder="Cena/Kg" value="3" /> <div class="muted" style="align-self:center">€ / kg</div>
+    <input id="quantity" type="number" class="small" min="1" value="10" /> <div class="muted" style="align-self:center">St. kosov</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="muted">Delo, vpetja & obdelave</div>
+
+  <div class="ops" id="ops"></div>
+  <div class="toolbar">
+    <button id="addOp">Dodaj vpetje/operacijo</button>
+    <button class="secondary" id="clearOps">Počisti vse</button>
+  </div>
+
+</div>
+
+<div class="card">
+  <label>Popust (%)</label>
+  <input id="discount" type="number" min="0" max="100" value="0" class="small" />
+  <div class="save-load">
+    <input id="presetName" type="text" placeholder="Ime prednastavitve" class="big" />
+    <button class="secondary" id="savePreset">Shrani</button>
+    <button class="secondary" id="loadPreset">Naloži</button>
+    <button class="secondary" id="listPresets">Seznam</button>
+  </div>
+  <button id="calc">IZRAČUNAJ STROŠKE & ČAS</button>
+
+  <div id="results" class="result"></div>
+  <div style="margin-top:8px">
+    <button id="exportCSV" class="secondary">Izvozi CSV</button>
+    <button id="exportJSON" class="secondary">Izvozi JSON</button>
+  </div>
+</div>
+
+<footer>Shrani to stran v Home Screen (Dodaj na domači zaslon) za hitro uporabo kot "app".</footer>
+
+<script>
+// Utilities
+function mmToCm3(h,w,t,uh,uw,ut){
+  function toMm(v, unit){
+    if(unit==='mm') return v;
+    if(unit==='cm') return v*10;
+    if(unit==='m') return v*1000;
+    return v;
+  }
+  const H = toMm(Number(h)||0, uh);
+  const W = toMm(Number(w)||0, uw);
+  const T = toMm(Number(t)||0, ut);
+  const vol_mm3 = H * W * T;
+  const vol_cm3 = vol_mm3 / 1000;
+  return vol_cm3;
+}
+
+function formatMoney(v){ return (Math.round(v*100)/100).toFixed(2) + ' €'; }
+function formatTimeHours(h){
+  const hrs = Math.floor(h);
+  const mins = Math.round((h-hrs)*60);
+  return hrs + ' h ' + mins + ' min';
+}
+
+const opsContainer = document.getElementById('ops');
+function createOp(data){
+  const id = 'op_' + Date.now() + Math.floor(Math.random()*1000);
+  const op = document.createElement('div');
+  op.className='op';
+  op.id = id;
+  op.innerHTML = `
+    <div class="op-fields">
+      <div style="min-width:140px">
+        <label>Ime operacije</label>
+        <input class="op-name" type="text" value="${data?.name||'CNC op'}" />
+      </div>
+      <div>
+        <label>CAD/CAM čas</label>
+        <div class="row"><input type="number" class="op-cad small" step="0.1" value="${data?.cad||0}" /><select class="op-cad-unit"><option>h</option><option>min</option></select></div>
+      </div>
+      <div>
+        <label>Neto čas</label>
+        <div class="row"><input type="number" class="op-neto small" step="1" value="${data?.neto||0}" /><select class="op-neto-unit"><option>min</option><option>h</option></select></div>
+      </div>
+      <div>
+        <label>Urna postavka (€)</label>
+        <div class="row"><input type="number" class="op-rate small" step="0.5" value="${data?.rate||35}" /></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+      <button class="secondary remove-op">Odstrani</button>
+      <div class="muted">Stroški: <span class="op-cost">0 €</span></div>
+      <div class="muted">Čas: <span class="op-time">0 h</span></div>
+    </div>
+  `;
+  opsContainer.appendChild(op);
+
+  if(data?.cadUnit){ op.querySelector('.op-cad-unit').value = data.cadUnit; }
+  if(data?.netoUnit){ op.querySelector('.op-neto-unit').value = data.netoUnit; }
+
+  op.querySelector('.remove-op').addEventListener('click', ()=>{ op.remove(); });
+  return op;
+}
+
+document.getElementById('addOp').addEventListener('click', ()=> createOp());
+
+document.getElementById('clearOps').addEventListener('click', ()=>{ opsContainer.innerHTML=''; });
+
+document.getElementById('materialSelect').addEventListener('change',(e)=>{
+  const sel = e.target;
+  const opt = sel.options[sel.selectedIndex];
+  if(opt.value==='custom'){
+    document.getElementById('density').value = '';
+    document.getElementById('density').focus();
+  } else {
+    document.getElementById('density').value = opt.dataset.density;
+  }
+});
+
+document.getElementById('calc').addEventListener('click', ()=>{
+  const density = parseFloat(document.getElementById('density').value) || 0;
+  const pricePerKg = parseFloat(document.getElementById('pricePerKg').value) || 0;
+  const qty = parseInt(document.getElementById('quantity').value) || 1;
+  const H = parseFloat(document.getElementById('height').value) || 0;
+  const W = parseFloat(document.getElementById('width').value) || 0;
+  const T = parseFloat(document.getElementById('thickness').value) || 0;
+  const uh = document.getElementById('unitH').value;
+  const uw = document.getElementById('unitW').value;
+  const ut = document.getElementById('unitT').value;
+
+  const vol_cm3 = mmToCm3(H,W,T,uh,uw,ut);
+  const mass_g = vol_cm3 * density;
+  const mass_kg = mass_g/1000;
+  const material_cost = mass_kg * pricePerKg * qty;
+
+  const opNodes = Array.from(opsContainer.querySelectorAll('.op'));
+  let totalLabourCost = 0;
+  let totalTimeHours = 0;
+  opNodes.forEach(n=>{
+    const cad = parseFloat(n.querySelector('.op-cad').value) || 0;
+    const cadUnit = n.querySelector('.op-cad-unit').value;
+    const neto = parseFloat(n.querySelector('.op-neto').value) || 0;
+    const netoUnit = n.querySelector('.op-neto-unit').value;
+    const rate = parseFloat(n.querySelector('.op-rate').value) || 0;
+
+    let cadHours = cadUnit==='h' ? cad : cad/60;
+    let netoHours = netoUnit==='h' ? neto : neto/60;
+    const opTimeHours = cadHours + netoHours;
+    const opCost = opTimeHours * rate * qty;
+    totalLabourCost += opCost;
+    totalTimeHours += opTimeHours * qty;
+
+    n.querySelector('.op-cost').textContent = formatMoney(opCost);
+    n.querySelector('.op-time').textContent = formatTimeHours(opTimeHours*qty);
+  });
+
+  const subtotal = material_cost + totalLabourCost;
+  const discount = parseFloat(document.getElementById('discount').value) || 0;
+  const total = subtotal * (1 - discount/100);
+  const perPiece = total / qty;
+
+  const results = document.getElementById('results');
+  results.innerHTML = `Skupna teža (kos): ${mass_kg.toFixed(3)} kg · Skupna masa (vseh kosov): ${(mass_kg*qty).toFixed(3)} kg<br>
+  Materialni strošek: ${formatMoney(material_cost)} · Strošek dela: ${formatMoney(totalLabourCost)}<br>
+  <strong>Skupni strošek po popustu (${discount}%): ${formatMoney(total)}</strong><br>
+  Strošek na kos: <strong>${formatMoney(perPiece)}</strong><br>
+  Skupni čas obdelave (vseh kosov): ${formatTimeHours(totalTimeHours)} `;
+});
+
+document.getElementById('exportCSV').addEventListener('click', ()=>{
+  const qty = parseInt(document.getElementById('quantity').value)||1;
+  const H = document.getElementById('height').value, W = document.getElementById('width').value, T = document.getElementById('thickness').value;
+  const rows = [['Field','Value']];
+  rows.push(['Dimenzije (H x W x T)', `${H} x ${W} x ${T}`]);
+  rows.push(['Količina', qty]);
+  const opNodes = Array.from(opsContainer.querySelectorAll('.op'));
+  opNodes.forEach((n,i)=>{
+    rows.push([`Operacija ${i+1} - Ime`, n.querySelector('.op-name').value]);
+    rows.push([`Operacija ${i+1} - CAD/CAM čas`, n.querySelector('.op-cad').value + ' ' + n.querySelector('.op-cad-unit').value]);
+    rows.push([`Operacija ${i+1} - Neto čas`, n.querySelector('.op-neto').value + ' ' + n.querySelector('.op-neto-unit').value]);
+    rows.push([`Operacija ${i+1} - Urna`, n.querySelector('.op-rate').value + ' €']);
+  });
+  let csv = rows.map(r=> r.map(c=> `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'cnc_estimate.csv'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('exportJSON').addEventListener('click', ()=>{
+  const data = {};
+  data.material = { density: parseFloat(document.getElementById('density').value)||0, pricePerKg: parseFloat(document.getElementById('pricePerKg').value)||0, qty: parseInt(document.getElementById('quantity').value)||1 };
+  data.dimensions = { H: document.getElementById('height').value, unitH: document.getElementById('unitH').value, W: document.getElementById('width').value, unitW: document.getElementById('unitW').value, T: document.getElementById('thickness').value, unitT: document.getElementById('unitT').value };
+  data.operations = Array.from(opsContainer.querySelectorAll('.op')).map(n=>({ name: n.querySelector('.op-name').value, cad: n.querySelector('.op-cad').value, cadUnit: n.querySelector('.op-cad-unit').value, neto: n.querySelector('.op-neto').value, netoUnit: n.querySelector('.op-neto-unit').value, rate: n.querySelector('.op-rate').value }));
+  const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'cnc_estimate.json'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('savePreset').addEventListener('click', ()=>{
+  const name = document.getElementById('presetName').value.trim();
+  if(!name){ alert('Vnesi ime prednastavitve.'); return; }
+  const state = {
+    density: document.getElementById('density').value,
+    pricePerKg: document.getElementById('pricePerKg').value,
+    quantity: document.getElementById('quantity').value,
+    height: document.getElementById('height').value, width: document.getElementById('width').value, thickness: document.getElementById('thickness').value,
+    ops: Array.from(opsContainer.querySelectorAll('.op')).map(n=>({ name:n.querySelector('.op-name').value, cad:n.querySelector('.op-cad').value, cadUnit:n.querySelector('.op-cad-unit').value, neto:n.querySelector('.op-neto').value, netoUnit:n.querySelector('.op-neto-unit').value, rate:n.querySelector('.op-rate').value }))
+  };
+  const presets = JSON.parse(localStorage.getItem('cnc_presets')||'{}');
+  presets[name]=state;
+  localStorage.setItem('cnc_presets', JSON.stringify(presets));
+  alert('Prednastavitev shranjena: ' + name);
+});
+
+document.getElementById('loadPreset').addEventListener('click', ()=>{
+  const name = document.getElementById('presetName').value.trim();
+  if(!name){ alert('Vnesi ime prednastavitve za nalaganje.'); return; }
+  const presets = JSON.parse(localStorage.getItem('cnc_presets')||'{}');
+  if(!presets[name]){ alert('Prednastavitev ni najdena. Uporabi Seznam za pregled.'); return; }
+  const s = presets[name];
+  document.getElementById('density').value = s.density; document.getElementById('pricePerKg').value = s.pricePerKg; document.getElementById('quantity').value = s.quantity;
+  document.getElementById('height').value = s.height; document.getElementById('width').value = s.width; document.getElementById('thickness').value = s.thickness;
+  opsContainer.innerHTML='';
+  (s.ops||[]).forEach(o=> createOp(o));
+  alert('Naloženo: ' + name);
+});
+
+document.getElementById('listPresets').addEventListener('click', ()=>{
+  const presets = JSON.parse(localStorage.getItem('cnc_presets')||'{}');
+  const names = Object.keys(presets);
+  if(names.length===0){ alert('Ni shranjenih prednastavitev.'); return; }
+  alert('Prednastavitve:\\n' + names.join('\\n'));
+});
+
+createOp({name:'Žična', cad:1, cadUnit:'h', neto:20, netoUnit:'min', rate:35});
+createOp({name:'Razrez', cad:1, cadUnit:'h', neto:1, netoUnit:'min', rate:10});
+createOp({name:'CNC op_1', cad:0.3, cadUnit:'h', neto:2, netoUnit:'min', rate:35});
+createOp({name:'CNC op_2', cad:0.5, cadUnit:'h', neto:5, netoUnit:'min', rate:35});
+
+</script>
+</body>
+</html>
