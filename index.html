@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>CNC kalkulator — Stroški & Čas (v5)</title>
+<title>CNC kalkulator — Stroški & Čas (v5.1)</title>
 <style>
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;max-width:900px;margin:0 auto;padding:16px;background:#f5f6fa;color:#111;font-size:18px}
   header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px;flex-wrap:wrap}
@@ -35,7 +35,7 @@
 </head>
 <body>
 <header>
-  <h1>CNC kalkulator <span class="version">(v5)</span></h1>
+  <h1>CNC kalkulator <span class="version">(v5.1)</span></h1>
   <button class="refresh-btn" id="refreshAll">🔄 Osveži & počisti</button>
 </header>
 
@@ -43,13 +43,81 @@
   Na voljo je nova različica — <button id="updateNow">Posodobi zdaj</button>
 </div>
 
+<div class="card">
+  <div class="muted">Material, oblika in količina</div>
+  <label>Oblika materiala</label>
+  <select id="shapeSelect" class="big">
+    <option value="rect">Pravokoten (plošča)</option>
+    <option value="round">Okrogel (palica / cev)</option>
+  </select>
+
+  <label>Material</label>
+  <div class="row">
+    <select id="materialSelect" class="big">
+      <option value="steel" data-density="7.85">Jeklo — 7.85 g/cm³</option>
+      <option value="aluminium" data-density="2.70">Aluminij — 2.70 g/cm³</option>
+      <option value="brass" data-density="8.50">Medenina — 8.50 g/cm³</option>
+      <option value="plastic" data-density="1.20">Plastika — 1.20 g/cm³</option>
+      <option value="custom">Lastna gostota...</option>
+    </select>
+    <input id="density" class="small" type="number" step="0.01" min="0" value="7.85" /> <div class="muted" style="align-self:center">g/cm³</div>
+  </div>
+
+  <div id="rectInputs">
+    <label>Dimenzije plošče</label>
+    <div class="row">
+      <input id="height" type="number" class="small" placeholder="Višina (H)" value="50" /> <select id="unitH"><option>mm</option><option>cm</option><option>m</option></select>
+      <input id="width" type="number" class="small" placeholder="Dolžina (L)" value="50" /> <select id="unitW"><option>mm</option><option>cm</option><option>m</option></select>
+      <input id="thickness" type="number" class="small" placeholder="Debelina (T)" value="10" /> <select id="unitT"><option>mm</option><option>cm</option><option>m</option></select>
+    </div>
+  </div>
+
+  <div id="roundInputs" style="display:none">
+    <label>Dimenzije okroglega materiala</label>
+    <div class="row">
+      <input id="diameter" type="number" class="small" placeholder="Premer (D)" value="20" /> <select id="unitD"><option>mm</option><option>cm</option><option>m</option></select>
+      <input id="length" type="number" class="small" placeholder="Dolžina (L)" value="100" /> <select id="unitL"><option>mm</option><option>cm</option><option>m</option></select>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:10px">
+    <input id="pricePerKg" type="number" class="small" step="0.01" placeholder="Cena/Kg" value="3" /> <div class="muted" style="align-self:center">€ / kg</div>
+    <input id="quantity" type="number" class="small" min="1" value="10" /> <div class="muted" style="align-self:center">St. kosov</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="muted">Delo, vpetja & obdelave</div>
+  <div class="ops" id="ops"></div>
+  <div class="toolbar">
+    <button id="addOp">Dodaj vpetje/operacijo</button>
+    <button class="secondary" id="clearOps">Počisti vse</button>
+  </div>
+</div>
+
+<div class="card">
+  <label>Popust (%)</label>
+  <input id="discount" type="number" min="0" max="100" value="0" class="small" />
+  <div class="save-load">
+    <input id="presetName" type="text" placeholder="Ime prednastavitve" class="big" />
+    <button class="secondary" id="savePreset">Shrani</button>
+    <button class="secondary" id="loadPreset">Naloži</button>
+    <button class="secondary" id="listPresets">Seznam</button>
+  </div>
+  <button id="calc">IZRAČUNAJ STROŠKE & ČAS</button>
+  <div id="results" class="result"></div>
+</div>
+
+<footer>Shrani to stran v Home Screen (Dodaj na domači zaslon) za hitro uporabo kot "app".</footer>
+
 <script>
-const CURRENT_VERSION = 'v5';
+// ======= Helper: version check & refresh =======
+const CURRENT_VERSION = 'v5.1';
 async function checkVersion(){
   try {
     const response = await fetch('https://itomy-git.github.io/cnc/index.html?nocache=' + Date.now());
     const text = await response.text();
-    if(!text.includes('v5')){
+    if(!text.includes('v5.1')){
       if(confirm('Na voljo je nova različica — posodobim zdaj?')){
         location.reload(true);
       } else {
@@ -69,9 +137,218 @@ document.getElementById('refreshAll').addEventListener('click',()=>{
     location.reload(true);
   }
 });
+
+// ======= Storage helpers (robust) =======
+function safeGetPresets(){
+  try{
+    const raw = localStorage.getItem('cnc_presets');
+    if(!raw) return {};
+    const obj = JSON.parse(raw);
+    return (obj && typeof obj==='object') ? obj : {};
+  }catch(e){
+    alert('⚠️ Branje prednastavitev ni uspelo: '+e.message);
+    return {};
+  }
+}
+function safeSetPresets(presets){
+  try{
+    localStorage.setItem('cnc_presets', JSON.stringify(presets||{}));
+    return true;
+  }catch(e){
+    alert('⚠️ Shranjevanje prednastavitev ni uspelo: '+e.message);
+    return false;
+  }
+}
+if(!localStorage.getItem('cnc_presets')){ safeSetPresets({}); }
+
+// ======= Unit helpers & volume =======
+function toMm(v, unit){ if(unit==='mm')return v; if(unit==='cm')return v*10; if(unit==='m')return v*1000; return v; }
+function mmToCm3_Rect(h,w,t,uh,uw,ut){ const vol_mm3 = toMm(h,uh)*toMm(w,uw)*toMm(t,ut); return vol_mm3/1000; }
+function mmToCm3_Round(d,l,ud,ul){ const r_mm = toMm(d,ud)/2; const vol_mm3 = Math.PI*r_mm*r_mm*toMm(l,ul); return vol_mm3/1000; }
+function formatMoney(v){ return (Math.round(v*100)/100).toFixed(2)+' €'; }
+function formatTimeHours(h){ const hrs=Math.floor(h); const mins=Math.round((h-hrs)*60); return hrs+' h '+mins+' min'; }
+
+// ======= UI toggles =======
+document.getElementById('shapeSelect').addEventListener('change', e=>{
+  const val=e.target.value;
+  document.getElementById('rectInputs').style.display=val==='rect'?'block':'none';
+  document.getElementById('roundInputs').style.display=val==='round'?'block':'none';
+});
+
+// ======= Operations UI =======
+const opsContainer=document.getElementById('ops');
+function createOp(data){
+  const id='op_'+Date.now()+Math.floor(Math.random()*1000);
+  const op=document.createElement('div');
+  op.className='op';
+  op.id=id;
+  op.innerHTML=`
+  <div class="op-fields">
+    <div style="min-width:160px"><label>Ime</label><input class="op-name" type="text" value="${data?.name||'Operacija'}" /></div>
+    <div><label>CAD/CAM</label><div class="row"><input type="number" class="op-cad small" step="0.1" value="${data?.cad||0}" /><select class="op-cad-unit"><option ${data?.cadUnit==='h'?'selected':''}>h</option><option ${data?.cadUnit==='min'?'selected':''}>min</option></select></div></div>
+    <div><label>Neto čas</label><div class="row"><input type="number" class="op-neto small" step="1" value="${data?.neto||0}" /><select class="op-neto-unit"><option ${(!data||data.netoUnit==='min')?'selected':''}>min</option><option ${data?.netoUnit==='h'?'selected':''}>h</option></select></div></div>
+    <div><label>Urna postavka (€)</label><div class="row"><input type="number" class="op-rate small" step="0.5" value="${data?.rate||35}" /></div></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+    <button class="secondary remove-op">Odstrani</button>
+    <div class="muted">Stroški: <span class="op-cost">0 €</span></div>
+    <div class="muted">Čas: <span class="op-time">0 h</span></div>
+  </div>`;
+  opsContainer.appendChild(op);
+  op.querySelector('.remove-op').addEventListener('click',()=>op.remove());
+  return op;
+}
+document.getElementById('addOp').addEventListener('click',()=>createOp());
+document.getElementById('clearOps').addEventListener('click',()=>opsContainer.innerHTML='');
+
+// ======= Material select =======
+document.getElementById('materialSelect').addEventListener('change',e=>{
+  const opt=e.target.options[e.target.selectedIndex];
+  if(opt.value==='custom'){document.getElementById('density').value='';document.getElementById('density').focus();}
+  else{document.getElementById('density').value=opt.dataset.density;}
+});
+
+// ======= Calculation =======
+document.getElementById('calc').addEventListener('click',()=>{
+  const shape=document.getElementById('shapeSelect').value;
+  const density=parseFloat(document.getElementById('density').value)||0;
+  const pricePerKg=parseFloat(document.getElementById('pricePerKg').value)||0;
+  const qty=parseInt(document.getElementById('quantity').value)||1;
+  let vol_cm3=0;
+  if(shape==='rect'){
+    const H=parseFloat(document.getElementById('height').value)||0;
+    const W=parseFloat(document.getElementById('width').value)||0;
+    const T=parseFloat(document.getElementById('thickness').value)||0;
+    vol_cm3=mmToCm3_Rect(H,W,T,document.getElementById('unitH').value,document.getElementById('unitW').value,document.getElementById('unitT').value);
+  }else{
+    const D=parseFloat(document.getElementById('diameter').value)||0;
+    const L=parseFloat(document.getElementById('length').value)||0;
+    vol_cm3=mmToCm3_Round(D,L,document.getElementById('unitD').value,document.getElementById('unitL').value);
+  }
+  const mass_kg=(vol_cm3*density)/1000;
+  const material_cost=mass_kg*pricePerKg*qty;
+
+  const opNodes=Array.from(opsContainer.querySelectorAll('.op'));
+  let totalLabourCost=0,totalTimeHours=0,totalPerPieceTime=0;
+  opNodes.forEach(n=>{
+    const cad=parseFloat(n.querySelector('.op-cad').value)||0;
+    const neto=parseFloat(n.querySelector('.op-neto').value)||0;
+    const cadUnit=n.querySelector('.op-cad-unit').value;
+    const netoUnit=n.querySelector('.op-neto-unit').value;
+    const rate=parseFloat(n.querySelector('.op-rate').value)||0;
+    let cadH=cadUnit==='h'?cad:cad/60;
+    let netoH=netoUnit==='h'?neto:neto/60;
+    const opTimePerPiece=(cadH/qty)+netoH; // CAD/CAM je skupen — deli z qty
+    const opCost=opTimePerPiece*rate*qty;
+    totalLabourCost+=opCost;
+    totalTimeHours+=opTimePerPiece*qty;
+    totalPerPieceTime+=opTimePerPiece;
+    n.querySelector('.op-cost').textContent=formatMoney(opCost);
+    n.querySelector('.op-time').textContent=formatTimeHours(opTimePerPiece*qty);
+  });
+
+  const subtotal=material_cost+totalLabourCost;
+  const discount=parseFloat(document.getElementById('discount').value)||0;
+  const total=subtotal*(1-discount/100);
+  const perPiece=total/qty;
+
+  document.getElementById('results').innerHTML=`Teža (kos): ${mass_kg.toFixed(3)} kg · Skupaj: ${(mass_kg*qty).toFixed(3)} kg<br>
+  Material: ${formatMoney(material_cost)} · Delo: ${formatMoney(totalLabourCost)}<br>
+  <strong>Skupaj (${discount}% popust): ${formatMoney(total)}</strong><br>
+  Strošek na kos: <strong>${formatMoney(perPiece)}</strong><br>
+  Čas obdelave vseh kosov: ${formatTimeHours(totalTimeHours)}<br>
+  Čas na kos: ${formatTimeHours(totalPerPieceTime)}`;
+});
+
+// ======= Presets (save/load/list) =======
+function captureState(){
+  const ops = Array.from(opsContainer.querySelectorAll('.op')).map(n=>({
+    name:n.querySelector('.op-name').value,
+    cad:n.querySelector('.op-cad').value,
+    cadUnit:n.querySelector('.op-cad-unit').value,
+    neto:n.querySelector('.op-neto').value,
+    netoUnit:n.querySelector('.op-neto-unit').value,
+    rate:n.querySelector('.op-rate').value
+  }));
+  const state = {
+    shape: document.getElementById('shapeSelect').value,
+    material: document.getElementById('materialSelect').value,
+    density: document.getElementById('density').value,
+    pricePerKg: document.getElementById('pricePerKg').value,
+    quantity: document.getElementById('quantity').value,
+    discount: document.getElementById('discount').value,
+    rect: {
+      H: document.getElementById('height').value,
+      unitH: document.getElementById('unitH').value,
+      W: document.getElementById('width').value,
+      unitW: document.getElementById('unitW').value,
+      T: document.getElementById('thickness').value,
+      unitT: document.getElementById('unitT').value
+    },
+    round: {
+      D: document.getElementById('diameter')?document.getElementById('diameter').value:0,
+      unitD: document.getElementById('unitD')?document.getElementById('unitD').value:'mm',
+      L: document.getElementById('length')?document.getElementById('length').value:0,
+      unitL: document.getElementById('unitL')?document.getElementById('unitL').value:'mm'
+    },
+    ops
+  };
+  return state;
+}
+function applyState(s){
+  try{
+    document.getElementById('shapeSelect').value = s.shape||'rect';
+    document.getElementById('materialSelect').value = s.material||'steel';
+    document.getElementById('density').value = s.density||'7.85';
+    document.getElementById('pricePerKg').value = s.pricePerKg||'3';
+    document.getElementById('quantity').value = s.quantity||'1';
+    document.getElementById('discount').value = s.discount||'0';
+    // toggle UI for shape
+    const evt = new Event('change'); document.getElementById('shapeSelect').dispatchEvent(evt);
+    // rect
+    document.getElementById('height').value = s.rect?.H ?? '50';
+    document.getElementById('unitH').value = s.rect?.unitH ?? 'mm';
+    document.getElementById('width').value = s.rect?.W ?? '50';
+    document.getElementById('unitW').value = s.rect?.unitW ?? 'mm';
+    document.getElementById('thickness').value = s.rect?.T ?? '10';
+    document.getElementById('unitT').value = s.rect?.unitT ?? 'mm';
+    // round
+    if(document.getElementById('diameter')){
+      document.getElementById('diameter').value = s.round?.D ?? '20';
+      document.getElementById('unitD').value = s.round?.unitD ?? 'mm';
+      document.getElementById('length').value = s.round?.L ?? '100';
+      document.getElementById('unitL').value = s.round?.unitL ?? 'mm';
+    }
+    // ops
+    opsContainer.innerHTML='';
+    (s.ops||[]).forEach(o=> createOp(o));
+  }catch(e){ alert('⚠️ Uporaba prednastavitve ni uspela: '+e.message); }
+}
+
+document.getElementById('savePreset').addEventListener('click',()=>{
+  const name = document.getElementById('presetName').value.trim();
+  if(!name){ alert('Vnesi ime prednastavitve!'); return; }
+  const presets = safeGetPresets();
+  presets[name] = captureState();
+  if(safeSetPresets(presets)) alert('Prednastavitev shranjena.');
+});
+document.getElementById('loadPreset').addEventListener('click',()=>{
+  const name = document.getElementById('presetName').value.trim();
+  if(!name){ alert('Vnesi ime prednastavitve!'); return; }
+  const presets = safeGetPresets();
+  if(!presets[name]){ alert('Prednastavitev ni najdena. Uporabi Seznam za pregled.'); return; }
+  applyState(presets[name]);
+  alert('Prednastavitev naložena.');
+});
+document.getElementById('listPresets').addEventListener('click',()=>{
+  const presets = safeGetPresets();
+  const names = Object.keys(presets);
+  if(names.length===0){ alert('Ni shranjenih prednastavitev.'); return; }
+  alert('Prednastavitve:\n' + names.join('\n'));
+});
+
+// ======= Default op =======
+createOp({name:'Osnovna obdelava',cad:0.5,cadUnit:'h',neto:5,netoUnit:'min',rate:35});
 </script>
-
-<p>Ta različica vključuje preverjanje verzije in popravljen localStorage.</p>
-
 </body>
 </html>
