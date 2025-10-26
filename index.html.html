@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="sl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CNC kalkulator — Stroški & Čas (v2)</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;max-width:900px;margin:0 auto;padding:16px;background:#f5f6fa;color:#111;font-size:18px}
+  header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+  h1{font-size:24px;margin:0;text-align:center;width:100%}
+  .card{background:#fff;border:1px solid #dce1e8;border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:0 2px 6px rgba(0,0,0,0.05)}
+  label{display:block;font-weight:600;margin-top:10px;font-size:17px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input[type="number"], input[type="text"], select{padding:12px;border:1px solid #cfd6e3;border-radius:8px;min-width:100px;font-size:18px}
+  button{background:#2b7be4;color:white;border:none;padding:12px 16px;border-radius:10px;font-weight:700;cursor:pointer;margin-top:12px;font-size:18px}
+  button.secondary{background:#6c757d}
+  .ops{margin-top:10px}
+  .op{border:1px dashed #cbd6e6;padding:10px;border-radius:8px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start}
+  .op-fields{display:flex;flex-wrap:wrap;gap:10px}
+  .result{font-size:18px;font-weight:700;margin-top:10px}
+  .muted{color:#666;font-weight:600;font-size:16px}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .save-load{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+  footer{font-size:14px;color:#666;margin-top:16px;text-align:center}
+  @media (max-width:520px){ 
+    body{font-size:19px;padding:14px}
+    input,select,button{font-size:19px;width:100%}
+    .op{grid-template-columns:1fr}
+    .row{flex-direction:column;align-items:stretch}
+  }
+</style>
+</head>
+<body>
+<header><h1>CNC kalkulator — Stroški & Čas (v2)</h1></header>
+
+<div class="card">
+  <div class="muted">Material, oblika in količina</div>
+  <label>Oblika materiala</label>
+  <select id="shapeSelect" class="big">
+    <option value="rect">Pravokoten (plošča)</option>
+    <option value="round">Okrogel (palica / cev)</option>
+  </select>
+
+  <label>Material</label>
+  <div class="row">
+    <select id="materialSelect" class="big">
+      <option value="steel" data-density="7.85">Jeklo — 7.85 g/cm³</option>
+      <option value="aluminium" data-density="2.70">Aluminij — 2.70 g/cm³</option>
+      <option value="brass" data-density="8.50">Medenina — 8.50 g/cm³</option>
+      <option value="plastic" data-density="1.20">Plastika — 1.20 g/cm³</option>
+      <option value="custom">Lastna gostota...</option>
+    </select>
+    <input id="density" class="small" type="number" step="0.01" min="0" value="7.85" /> <div class="muted" style="align-self:center">g/cm³</div>
+  </div>
+
+  <div id="rectInputs">
+    <label>Dimenzije plošče</label>
+    <div class="row">
+      <input id="height" type="number" class="small" placeholder="Višina (H)" value="50" /> <select id="unitH"><option>mm</option><option>cm</option><option>m</option></select>
+      <input id="width" type="number" class="small" placeholder="Dolžina (L)" value="50" /> <select id="unitW"><option>mm</option><option>cm</option><option>m</option></select>
+      <input id="thickness" type="number" class="small" placeholder="Debelina (T)" value="10" /> <select id="unitT"><option>mm</option><option>cm</option><option>m</option></select>
+    </div>
+  </div>
+
+  <div id="roundInputs" style="display:none">
+    <label>Dimenzije okroglega materiala</label>
+    <div class="row">
+      <input id="diameter" type="number" class="small" placeholder="Premer (D)" value="20" /> <select id="unitD"><option>mm</option><option>cm</option><option>m</option></select>
+      <input id="length" type="number" class="small" placeholder="Dolžina (L)" value="100" /> <select id="unitL"><option>mm</option><option>cm</option><option>m</option></select>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:10px">
+    <input id="pricePerKg" type="number" class="small" step="0.01" placeholder="Cena/Kg" value="3" /> <div class="muted" style="align-self:center">€ / kg</div>
+    <input id="quantity" type="number" class="small" min="1" value="10" /> <div class="muted" style="align-self:center">St. kosov</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="muted">Delo, vpetja & obdelave</div>
+  <div class="ops" id="ops"></div>
+  <div class="toolbar">
+    <button id="addOp">Dodaj vpetje/operacijo</button>
+    <button class="secondary" id="clearOps">Počisti vse</button>
+  </div>
+</div>
+
+<div class="card">
+  <label>Popust (%)</label>
+  <input id="discount" type="number" min="0" max="100" value="0" class="small" />
+  <div class="save-load">
+    <input id="presetName" type="text" placeholder="Ime prednastavitve" class="big" />
+    <button class="secondary" id="savePreset">Shrani</button>
+    <button class="secondary" id="loadPreset">Naloži</button>
+    <button class="secondary" id="listPresets">Seznam</button>
+  </div>
+  <button id="calc">IZRAČUNAJ STROŠKE & ČAS</button>
+  <div id="results" class="result"></div>
+</div>
+
+<footer>Shrani to stran v Home Screen (Dodaj na domači zaslon) za hitro uporabo kot "app".</footer>
+
+<script>
+function toMm(v, unit){
+  if(unit==='mm') return v;
+  if(unit==='cm') return v*10;
+  if(unit==='m') return v*1000;
+  return v;
+}
+function mmToCm3_Rect(h,w,t,uh,uw,ut){
+  const vol_mm3 = toMm(h,uh)*toMm(w,uw)*toMm(t,ut);
+  return vol_mm3/1000;
+}
+function mmToCm3_Round(d,l,ud,ul){
+  const r_mm = toMm(d,ud)/2;
+  const vol_mm3 = Math.PI*r_mm*r_mm*toMm(l,ul);
+  return vol_mm3/1000;
+}
+function formatMoney(v){return (Math.round(v*100)/100).toFixed(2)+' €';}
+function formatTimeHours(h){const hrs=Math.floor(h);const mins=Math.round((h-hrs)*60);return hrs+' h '+mins+' min';}
+
+document.getElementById('shapeSelect').addEventListener('change', e=>{
+  const val=e.target.value;
+  document.getElementById('rectInputs').style.display=val==='rect'?'block':'none';
+  document.getElementById('roundInputs').style.display=val==='round'?'block':'none';
+});
+
+const opsContainer=document.getElementById('ops');
+function createOp(data){
+  const id='op_'+Date.now()+Math.floor(Math.random()*1000);
+  const op=document.createElement('div');
+  op.className='op';
+  op.id=id;
+  op.innerHTML=`
+  <div class="op-fields">
+    <div style="min-width:160px"><label>Ime</label><input class="op-name" type="text" value="${data?.name||'Operacija'}" /></div>
+    <div><label>CAD/CAM</label><div class="row"><input type="number" class="op-cad small" step="0.1" value="${data?.cad||0}" /><select class="op-cad-unit"><option>h</option><option>min</option></select></div></div>
+    <div><label>Neto čas</label><div class="row"><input type="number" class="op-neto small" step="1" value="${data?.neto||0}" /><select class="op-neto-unit"><option>min</option><option>h</option></select></div></div>
+    <div><label>Urna postavka (€)</label><div class="row"><input type="number" class="op-rate small" step="0.5" value="${data?.rate||35}" /></div></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+    <button class="secondary remove-op">Odstrani</button>
+    <div class="muted">Stroški: <span class="op-cost">0 €</span></div>
+    <div class="muted">Čas: <span class="op-time">0 h</span></div>
+  </div>`;
+  opsContainer.appendChild(op);
+  op.querySelector('.remove-op').addEventListener('click',()=>op.remove());
+  return op;
+}
+document.getElementById('addOp').addEventListener('click',()=>createOp());
+document.getElementById('clearOps').addEventListener('click',()=>opsContainer.innerHTML='');
+
+document.getElementById('materialSelect').addEventListener('change',e=>{
+  const opt=e.target.options[e.target.selectedIndex];
+  if(opt.value==='custom'){document.getElementById('density').value='';document.getElementById('density').focus();}
+  else{document.getElementById('density').value=opt.dataset.density;}
+});
+
+document.getElementById('calc').addEventListener('click',()=>{
+  const shape=document.getElementById('shapeSelect').value;
+  const density=parseFloat(document.getElementById('density').value)||0;
+  const pricePerKg=parseFloat(document.getElementById('pricePerKg').value)||0;
+  const qty=parseInt(document.getElementById('quantity').value)||1;
+  let vol_cm3=0;
+  if(shape==='rect'){
+    const H=parseFloat(document.getElementById('height').value)||0;
+    const W=parseFloat(document.getElementById('width').value)||0;
+    const T=parseFloat(document.getElementById('thickness').value)||0;
+    vol_cm3=mmToCm3_Rect(H,W,T,document.getElementById('unitH').value,document.getElementById('unitW').value,document.getElementById('unitT').value);
+  }else{
+    const D=parseFloat(document.getElementById('diameter').value)||0;
+    const L=parseFloat(document.getElementById('length').value)||0;
+    vol_cm3=mmToCm3_Round(D,L,document.getElementById('unitD').value,document.getElementById('unitL').value);
+  }
+  const mass_kg=(vol_cm3*density)/1000;
+  const material_cost=mass_kg*pricePerKg*qty;
+
+  const opNodes=Array.from(opsContainer.querySelectorAll('.op'));
+  let totalLabourCost=0,totalTimeHours=0;
+  opNodes.forEach(n=>{
+    const cad=parseFloat(n.querySelector('.op-cad').value)||0;
+    const neto=parseFloat(n.querySelector('.op-neto').value)||0;
+    const cadUnit=n.querySelector('.op-cad-unit').value;
+    const netoUnit=n.querySelector('.op-neto-unit').value;
+    const rate=parseFloat(n.querySelector('.op-rate').value)||0;
+    let cadH=cadUnit==='h'?cad:cad/60;
+    let netoH=netoUnit==='h'?neto:neto/60;
+    const opTime=cadH+netoH;
+    const opCost=opTime*rate*qty;
+    totalLabourCost+=opCost;
+    totalTimeHours+=opTime*qty;
+    n.querySelector('.op-cost').textContent=formatMoney(opCost);
+    n.querySelector('.op-time').textContent=formatTimeHours(opTime*qty);
+  });
+
+  const subtotal=material_cost+totalLabourCost;
+  const discount=parseFloat(document.getElementById('discount').value)||0;
+  const total=subtotal*(1-discount/100);
+  const perPiece=total/qty;
+
+  document.getElementById('results').innerHTML=`Teža (kos): ${mass_kg.toFixed(3)} kg · Skupaj: ${(mass_kg*qty).toFixed(3)} kg<br>
+  Material: ${formatMoney(material_cost)} · Delo: ${formatMoney(totalLabourCost)}<br>
+  <strong>Skupaj (${discount}% popust): ${formatMoney(total)}</strong><br>
+  Strošek na kos: <strong>${formatMoney(perPiece)}</strong><br>
+  Čas obdelave: ${formatTimeHours(totalTimeHours)}`;
+});
+
+createOp({name:'Osnovna obdelava',cad:0.5,cadUnit:'h',neto:5,netoUnit:'min',rate:35});
+</script>
+</body>
+</html>
