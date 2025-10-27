@@ -196,12 +196,24 @@ function computeEstimate(updateUI=true){
   const qty=parseInt(document.getElementById('quantity').value)||1;
   const discount=parseFloat(document.getElementById('discount').value)||0;
 
+  
   let vol=0;
   if(shape==='rect'){
-    vol=mmToCm3_Rect(+height.value,+width.value,+thickness.value,unitH.value,unitW.value,unitT.value);
-  }else{
-    vol=mmToCm3_Round(+diameter.value,+length.value,unitD.value,unitL.value);
+    const h = parseFloat(document.getElementById('height').value) || 0;
+    const w = parseFloat(document.getElementById('width').value) || 0;
+    const t = parseFloat(document.getElementById('thickness').value) || 0;
+    const uh = document.getElementById('unitH').value;
+    const uw = document.getElementById('unitW').value;
+    const ut = document.getElementById('unitT').value;
+    vol = mmToCm3_Rect(h, w, t, uh, uw, ut);
+  } else {
+    const d = parseFloat(document.getElementById('diameter').value) || 0;
+    const l = parseFloat(document.getElementById('length').value) || 0;
+    const ud = document.getElementById('unitD').value;
+    const ul = document.getElementById('unitL').value;
+    vol = mmToCm3_Round(d, l, ud, ul);
   }
+
   const mass_kg=isNaN(vol*density/1000)?0:(vol*density)/1000;
   const material_cost=mass_kg*pricePerKg*qty;
 
