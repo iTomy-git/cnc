@@ -197,8 +197,9 @@ function computeEstimate(updateUI=true){
   const discount=parseFloat(document.getElementById('discount').value)||0;
 
   
-  let vol=0;
-  if(shape==='rect'){
+  
+  let vol = 0;
+  if (shape === 'rect') {
     const h = parseFloat(document.getElementById('height').value) || 0;
     const w = parseFloat(document.getElementById('width').value) || 0;
     const t = parseFloat(document.getElementById('thickness').value) || 0;
@@ -211,7 +212,9 @@ function computeEstimate(updateUI=true){
     const l = parseFloat(document.getElementById('length').value) || 0;
     const ud = document.getElementById('unitD').value;
     const ul = document.getElementById('unitL').value;
-    vol = mmToCm3_Round(d, l, ud, ul);
+    const d_mm = toMm(d, ud);
+    const l_mm = toMm(l, ul);
+    vol = Math.PI * Math.pow(d_mm / 2, 2) * l_mm / 1000; // pravilna formula za cm³
   }
 
   const mass_kg=isNaN(vol*density/1000)?0:(vol*density)/1000;
