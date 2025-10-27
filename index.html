@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>CNC kalkulator — Stroški & Čas (v6)</title>
+<title>CNC kalkulator — Stroški & Čas (v7)</title>
 <style>
   :root{--bg:#f5f6fa;--card:#fff;--border:#dce1e8;--muted:#666;--primary:#2b7be4;--danger:#f04343}
   *{box-sizing:border-box} body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;max-width:900px;margin:0 auto;padding:16px;background:var(--bg);color:#111;font-size:18px}
@@ -37,7 +37,7 @@
 </head>
 <body>
 <header>
-  <h1>CNC kalkulator <span style="color:#666;font-size:15px">v6</span></h1>
+  <h1>CNC kalkulator <span style="color:#666;font-size:15px">v7</span></h1>
   <button class="btn danger" id="refreshAll">🔄 Osveži & počisti</button>
 </header>
 
@@ -288,19 +288,49 @@ function openOffers(){overlay.style.display='flex';}
 function closeOffers(){overlay.style.display='none';}
 document.getElementById('closeOffers').onclick=closeOffers;
 
-function saveOffer(){
-  const name=offerName.value.trim();
-  if(!name){alert('Vnesi ime ponudbe.');return;}
-  const est=computeEstimate(false);
-  const data=captureState();
-  const list=getOffers();
-  let offer=currentOfferId?list.find(o=>o.id===currentOfferId):null;
-  if(!offer){currentOfferId=uid();offer={id:currentOfferId};list.push(offer);}
-  offer.name=name; offer.date=nowTs(); offer.summary={qty:est.qty,total:est.total,perPiece:est.perPiece}; offer.data=data;
-  setOffers(list); alert('Ponudba shranjena.');
-  if(overlay.style.display!=='none') renderOffers();
+
+function saveOffer() {
+  const name = offerName.value.trim();
+  if (!name) { alert('Vnesi ime ponudbe.'); return; }
+
+  const est = computeEstimate(false);
+  const data = captureState();
+  const list = getOffers();
+
+  // preveri, ali že obstaja ponudba z istim imenom
+  const sameNameOffer = list.find(o => o.name === name);
+
+  let offer = null;
+  if (sameNameOffer) {
+    // če že obstaja, vprašaj uporabnika za potrditev prepisovanja
+    if (!confirm(`Ponudba z imenom "${name}" že obstaja. Želiš prepisati obstoječo?`)) {
+      // če ne želi prepisati, ustvari novo z drugim ID
+      currentOfferId = uid();
+      offer = { id: currentOfferId };
+      list.push(offer);
+    } else {
+      offer = sameNameOffer;
+      currentOfferId = offer.id;
+    }
+  } else {
+    // novo ime → ustvari novo ponudbo
+    currentOfferId = uid();
+    offer = { id: currentOfferId };
+    list.push(offer);
+  }
+
+  offer.name = name;
+  offer.date = nowTs();
+  offer.summary = { qty: est.qty, total: est.total, perPiece: est.perPiece };
+  offer.data = data;
+
+  setOffers(list);
+  alert('Ponudba shranjena.');
+  if (overlay.style.display !== 'none') renderOffers();
 }
-document.getElementById('saveOffer').onclick=saveOffer;
+
+
+document.getElementById('saveOffer').onclick = saveOffer;
 
 function loadOffer(id){
   const o=getOffers().find(x=>x.id===id);
