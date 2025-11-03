@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="sl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CNC kalkulator</title>
+<link rel="manifest" href="/cnc/manifest.json">
+<meta name="theme-color" content="#2b7be4"/>
+<style>
+  :root{--bg:#f5f6fa;--card:#fff;--border:#dce1e8;--muted:#666;--primary:#2b7be4;--danger:#f04343}
+  *{box-sizing:border-box} body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;max-width:900px;margin:0 auto;padding:16px;background:var(--bg);color:#111;font-size:18px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  h1{margin:0;font-size:22px;flex:1;text-align:center}
+  .ver{color:#666;font-size:14px;margin-left:6px}
+  .btn{background:var(--primary);color:#fff;border:0;border-radius:10px;padding:12px 16px;font-weight:700;cursor:pointer;font-size:18px}
+  .btn.secondary{background:#6c757d}.btn.danger{background:var(--danger)} .btn.small{padding:8px 10px;font-size:16px;border-radius:8px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:0 2px 6px rgba(0,0,0,.05)}
+  label{display:block;font-weight:600;margin-top:10px}
+  input[type="number"],input[type="text"],select{padding:12px;border:1px solid #cfd6e3;border-radius:8px;min-width:100px;font-size:18px;background:#fff}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .muted{color:#666;font-weight:600;font-size:16px}
+  .ops{margin-top:10px}
+  .op{border:1px dashed #cbd6e6;padding:10px;border-radius:8px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;background:#fff}
+  .op-fields{display:flex;flex-wrap:wrap;gap:10px}
+  .result{font-weight:700;margin-top:10px}
+  .offers-bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  footer{font-size:14px;color:#666;margin-top:16px;text-align:center}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:flex-start;justify-content:center;padding:16px;z-index:999}
+  .modal{background:#fff;border-radius:12px;max-width:900px;width:100%;height:90vh;display:flex;flex-direction:column;border:1px solid var(--border);box-shadow:0 8px 30px rgba(0,0,0,.25)}
+  .modal-header{display:flex;align-items:center;gap:10px;padding:12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:#fff;z-index:1}
+  .modal-header .title{font-weight:800;font-size:18px;margin-right:auto}
+  .modal-body{padding:12px;overflow:auto}
+  .search{flex:0 0 220px;display:flex;gap:8px;align-items:center}
+  .search input{flex:1;padding:10px;border:1px solid #cfd6e3;border-radius:8px;font-size:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  .offer-card{border:1px solid var(--border);border-radius:10px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px}
+  .offer-card h4{margin:0;font-size:18px}.offer-meta{font-size:14px;color:#555}.offer-actions{display:flex;gap:8px}
+  @media (max-width:520px){body{font-size:19px;padding:14px} input,select,.btn{font-size:19px;width:100%} .op{grid-template-columns:1fr} .modal{height:92vh}.search{flex:1}}
+  @media print {.no-print{display:none !important} body{max-width:none}}
+</style>
+</head>
+<body>
+<header class="no-print">
+  <h1>CNC kalkulator <span class="ver">v12</span></h1>
+  <button class="btn danger" id="resetForm">🧹 Počisti obrazec</button>
+</header>
+
+<!-- MATERIAL & KOLIČINA -->
+<div class="card">
+  <div class="muted">Material, oblika in količina</div>
+  <label>Oblika materiala</label>
+  <select id="shapeSelect">
+    <option value="rect">Pravokoten (plošča)</option>
+    <option value="round">Okrogel (palica / cev)</option>
+  </select>
+
+  <label>Material</label>
+  <div class="row">
+    <select id="materialSelect">
+      <option value="steel" data-density="7.85">Jeklo — 7.85 g/cm³</option>
+      <option value="aluminium" data-density="2.70">Aluminij — 2.70 g/cm³</option>
+      <option value="brass" data-density="8.50">Medenina — 8.50 g/cm³</option>
+      <option value="plastic" data-density="1.20">Plastika — 1.20 g/cm³</option>
+      <option value="custom">Lastna gostota...</option>
+    </select>
+    <input id="density" type="number" step="0.01" min="0" value="7.85" />
+    <div class="muted" style="align-self:center">g/cm³</div>
+  </div>
+
+  <div id="rectInputs">
+    <label>Dimenzije plošče</label>
+    <div class="row">
+      <input id="height" type="number" placeholder="Višina (H)" value="50" />
+      <select id="unitH"><option>mm</option><option>cm</option><option>m</option></select>
+      <input id="width" type="number" placeholder="Dolžina (L)" value="50" />
+      <select id="unitW"><option>mm</option><option>cm</option><option>m</option></select>
+      <input id="thickness" type="number" placeholder="Debelina (T)" value="10" />
+      <select id="unitT"><option>mm</option><option>cm</option><option>m</option></select>
+    </div>
+  </div>
+
+  <div id="roundInputs" style="display:none">
+    <label>Dimenzije okroglega materiala</label>
+    <div class="row">
+      <input id="diameter" type="number" placeholder="Premer (D)" value="20" />
+      <select id="unitD"><option>mm</option><option>cm</option><option>m</option></select>
+      <input id="length" type="number" placeholder="Dolžina (L)" value="100" />
+      <select id="unitL"><option>mm</option><option>cm</option><option>m</option></select>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:10px">
+    <input id="pricePerKg" type="number" step="0.01" placeholder="Cena/Kg" value="3" />
+    <div class="muted" style="align-self:center">€ / kg</div>
+    <input id="wastePct" type="number" min="0" max="100" value="0" />
+    <div class="muted" style="align-self:center">Odpad (%)</div>
+    <input id="quantity" type="number" min="1" value="10" />
+    <div class="muted" style="align-self:center">Št. kosov</div>
+  </div>
+</div>
+
+<!-- OPERACIJE -->
+<div class="card">
+  <div class="muted">Delo, vpetja & obdelave</div>
+  <div class="ops" id="ops"></div>
+  <div class="row" style="margin-top:10px">
+    <button class="btn" id="addOp">Dodaj vpetje/operacijo</button>
+    <button class="btn secondary" id="clearOps">Počisti operacije</button>
+  </div>
+</div>
+
+<!-- IZRAČUN & PONUDBE -->
+<div class="card">
+  <label>Popust (%)</label>
+  <input id="discount" type="number" min="0" max="100" value="0" />
+  <label style="margin-top:10px">DDV (%)</label>
+  <input id="vatPct" type="number" min="0" max="99" value="22" />
+  <div class="offers-bar no-print">
+    <input id="offerName" type="text" placeholder="Ime ponudbe (npr. Ohišje ALU 10 kosov)" style="flex:1;min-width:240px" />
+    <button class="btn secondary" id="saveOffer">💾 Shrani ponudbo</button>
+    <button class="btn secondary" id="openOffers">🧾 Seznam ponudb</button>
+    <button class="btn danger" id="deleteCurrent">🗑️ Izbriši trenutno</button>
+  </div>
+  <div class="offers-bar no-print">
+    <input id="importFile" type="file" accept=".json,application/json" style="display:none" />
+    <button class="btn secondary" id="importJson">📥 Uvozi JSON</button>
+    <button class="btn secondary" id="exportJson">⬇️ Izvozi JSON</button>
+    <button class="btn secondary" id="exportCsv">⬇️ Izvozi CSV</button>
+    <button class="btn" id="exportPdf">📄 Izvozi PDF</button>
+  </div>
+  <button class="btn no-print" id="calc">IZRAČUNAJ STROŠKE & ČAS</button>
+  <div id="results" class="result"></div>
+</div>
+
+<footer class="no-print">Namesti na začetni zaslon za hitro uporabo kot "app". Ponudbe se shranjujejo v IndexedDB (lokalno, do ~1000 zapisov).</footer>
+
+<!-- MODAL PONUDBE -->
+<div id="offersOverlay" class="overlay no-print" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="offersTitle">
+    <div class="modal-header">
+      <button class="btn secondary small" id="closeOffers">🔙 Zapri</button>
+      <div class="title" id="offersTitle">Moje ponudbe</div>
+      <div class="search"><input id="offerSearch" type="text" placeholder="Išči po imenu..." /></div>
+    </div>
+    <div class="modal-body">
+      <div id="offersGrid" class="grid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ====== Minimalni IndexedDB helper (brez Dexie) ======
+const dbName = 'cnc_db';
+const storeName = 'offers';
+function idbOpen(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(dbName, 1);
+    req.onupgradeneeded = (e)=>{
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains(storeName)){
+        db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function idbAll(){
+  const db = await idbOpen();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(storeName, 'readonly');
+    const store = tx.objectStore(storeName);
+    const req = store.getAll();
+    req.onsuccess = ()=>resolve(req.result||[]);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function idbPut(obj){
+  const db = await idbOpen();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    const req = store.put(obj);
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function idbGet(id){
+  const db = await idbOpen();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(storeName, 'readonly');
+    const store = tx.objectStore(storeName);
+    const req = store.get(id);
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function idbDelete(id){
+  const db = await idbOpen();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    const req = store.delete(id);
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function idbFindByName(name){
+  const list = await idbAll();
+  return list.find(o => (o.name||'').toLowerCase() === (name||'').toLowerCase());
+}
+
+// ====== UI & kalkulacije ======
+let currentOfferId=null;
+const opsContainer=document.getElementById('ops');
+
+function toMm(v,u){if(u==='mm')return v;if(u==='cm')return v*10;if(u==='m')return v*1000;return v;}
+function mmToCm3_Rect(h,w,t,uh,uw,ut){return toMm(h,uh)*toMm(w,uw)*toMm(t,ut)/1000;}
+function mmToCm3_Round(d,l,ud,ul){const r=toMm(d,ud)/2;return Math.PI*r*r*toMm(l,ul)/1000;}
+function formatMoney(v){return (Math.round(v*100)/100).toFixed(2)+' €';}
+function formatTimeHours(h){const hrs=Math.floor(h);let mins=Math.round((h-hrs)*60);let adj=hrs;if(mins===60){adj+=1;mins=0;}return adj+' h '+String(mins).padStart(2,'0')+' min';}
+function nowTs(){const d=new Date();const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());}
+function escapeHTML(s){return String(s).replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;','\\'':'&#39;'}[m]));}
+
+function createOp(data){
+  const op=document.createElement('div');op.className='op';
+  op.innerHTML=`
+    <div class="op-fields">
+      <div style="min-width:160px"><label>Ime</label><input class="op-name" type="text" value="${data?.name||'Operacija'}"></div>
+      <div><label>CAD/CAM (skupaj)</label><div class="row"><input type="number" class="op-cad" step="0.1" value="${data?.cad||0}"><select class="op-cad-unit"><option ${data?.cadUnit==='h'?'selected':''}>h</option><option ${data?.cadUnit==='min'?'selected':''}>min</option></select></div></div>
+      <div><label>Neto čas (na kos)</label><div class="row"><input type="number" class="op-neto" step="1" value="${data?.neto||0}"><select class="op-neto-unit"><option ${(!data||data?.netoUnit==='min')?'selected':''}>min</option><option ${data?.netoUnit==='h'?'selected':''}>h</option></select></div></div>
+      <div><label>Urna postavka (€)</label><input type="number" class="op-rate" step="0.5" value="${data?.rate||35}"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+      <button class="btn secondary small remove-op">Odstrani</button>
+      <div class="muted">Stroški: <span class="op-cost">0 €</span></div>
+      <div class="muted">Čas: <span class="op-time">0 h</span></div>
+    </div>`;
+  opsContainer.appendChild(op);
+  op.querySelector('.remove-op').addEventListener('click',()=>op.remove());
+  return op;
+}
+document.getElementById('addOp').addEventListener('click',()=>createOp());
+document.getElementById('clearOps').addEventListener('click',()=>opsContainer.innerHTML='');
+
+document.getElementById('materialSelect').addEventListener('change',e=>{
+  const opt=e.target.options[e.target.selectedIndex];
+  document.getElementById('density').value = opt.value==='custom' ? '' : (opt.dataset.density||'');
+  if(opt.value==='custom') document.getElementById('density').focus();
+});
+document.getElementById('shapeSelect').addEventListener('change',e=>{
+  const v=e.target.value;
+  document.getElementById('rectInputs').style.display=v==='rect'?'block':'none';
+  document.getElementById('roundInputs').style.display=v==='round'?'block':'none';
+});
+
+function readOps(){return [...opsContainer.querySelectorAll('.op')].map(n=>({
+  name:n.querySelector('.op-name').value,
+  cad:parseFloat(n.querySelector('.op-cad').value)||0,
+  cadUnit:n.querySelector('.op-cad-unit').value,
+  neto:parseFloat(n.querySelector('.op-neto').value)||0,
+  netoUnit:n.querySelector('.op-neto-unit').value,
+  rate:parseFloat(n.querySelector('.op-rate').value)||0
+}))}
+
+function computeEstimate(updateUI=true){
+  const shape=document.getElementById('shapeSelect').value;
+  const density=parseFloat(document.getElementById('density').value)||0;
+  const pricePerKg=parseFloat(document.getElementById('pricePerKg').value)||0;
+  const wastePct=parseFloat(document.getElementById('wastePct').value)||0;
+  const qty=parseInt(document.getElementById('quantity').value)||1;
+  const discount=parseFloat(document.getElementById('discount').value)||0;
+  const vatPct=parseFloat(document.getElementById('vatPct').value)||0;
+
+  let vol = 0;
+  if (shape === 'rect') {
+    const h = parseFloat(document.getElementById('height').value) || 0;
+    const w = parseFloat(document.getElementById('width').value) || 0;
+    const t = parseFloat(document.getElementById('thickness').value) || 0;
+    const uh = document.getElementById('unitH').value;
+    const uw = document.getElementById('unitW').value;
+    const ut = document.getElementById('unitT').value;
+    vol = mmToCm3_Rect(h, w, t, uh, uw, ut);
+  } else {
+    const d = parseFloat(document.getElementById('diameter').value) || 0;
+    const l = parseFloat(document.getElementById('length').value) || 0;
+    const ud = document.getElementById('unitD').value;
+    const ul = document.getElementById('unitL').value;
+    vol = mmToCm3_Round(d, l, ud, ul);
+  }
+
+  const mass_kg=isNaN(vol*density/1000)?0:(vol*density)/1000;
+  const material_cost=mass_kg*pricePerKg*(1+wastePct/100)*qty;
+
+  const ops=readOps();
+  let totalLabourCost=0,totalTimeH=0,totalPerPiece=0;
+  ops.forEach(o=>{
+    const cadH=o.cadUnit==='h'?o.cad:o.cad/60;
+    const netoH=o.netoUnit==='h'?o.neto:o.neto/60;
+    const tPerPiece=(cadH/qty)+netoH;
+    totalLabourCost+=tPerPiece*o.rate*qty;
+    totalTimeH+=tPerPiece*qty;
+    totalPerPiece+=tPerPiece;
+  });
+
+  const subtotal=material_cost+totalLabourCost;
+  const discounted=subtotal*(1-discount/100);
+  const total=discounted*(1+vatPct/100);
+  const perPiece=total/qty;
+
+  if(updateUI){
+    [...opsContainer.querySelectorAll('.op')].forEach((n,i)=>{
+      const o=ops[i];
+      const cadH=o.cadUnit==='h'?o.cad:o.cad/60;
+      const netoH=o.netoUnit==='h'?o.neto:o.neto/60;
+      const tPerPiece=(cadH/qty)+netoH;
+      n.querySelector('.op-cost').textContent=formatMoney(tPerPiece*o.rate*qty);
+      n.querySelector('.op-time').textContent=formatTimeHours(tPerPiece*qty);
+    });
+    const materialPerPiece = material_cost / qty;
+    const labourPerPiece = totalLabourCost / qty;
+    document.getElementById('results').innerHTML =
+      `Teža (kos): ${mass_kg.toFixed(3)} kg · Skupaj: ${(mass_kg*qty).toFixed(3)} kg<br>
+       Material (vklj. odpad): ${formatMoney(material_cost)} · Delo: ${formatMoney(totalLabourCost)}<br>
+       <strong>Skupaj: ${formatMoney(total)}</strong> <span class="muted">(po popustu ${discount}% in z DDV ${vatPct}%)</span><br>
+       Strošek na kos: <strong>${formatMoney(perPiece)}</strong><br>
+       Čas vseh kosov: ${formatTimeHours(totalTimeH)} · Na kos: ${formatTimeHours(totalPerPiece)}<br>
+       Material/kos: ${formatMoney(materialPerPiece)} · Delo/kos: ${formatMoney(labourPerPiece)}`;
+  }
+  return {qty,total,perPiece, material_cost, totalLabourCost, mass_kg};
+}
+
+document.getElementById('calc').addEventListener('click',()=>computeEstimate(true));
+
+// ========== Počisti obrazec (NE briše ponudb) ==========
+function resetFormFields(){
+  shapeSelect.value='rect'; shapeSelect.dispatchEvent(new Event('change'));
+  materialSelect.value='steel'; density.value='7.85';
+  pricePerKg.value='3'; wastePct.value='0'; quantity.value='10'; discount.value='0'; vatPct.value='22';
+  height.value='50'; unitH.value='mm';
+  width.value='50'; unitW.value='mm';
+  thickness.value='10'; unitT.value='mm';
+  diameter.value='20'; unitD.value='mm';
+  length.value='100'; unitL.value='mm';
+  opsContainer.innerHTML=''; createOp({name:'',cad:0,cadUnit:'h',neto:0,netoUnit:'min',rate:0});
+  offerName.value=''; currentOfferId=null;
+  document.getElementById('results').innerHTML='';
+}
+document.getElementById('resetForm').addEventListener('click',()=>{
+  if(confirm('Počistim vsa polja obrazca (ponudbe v bazi ostanejo nedotaknjene)?')) resetFormFields();
+});
+
+function captureState(){return{
+  shape:shapeSelect.value, material:materialSelect.value, density:density.value,
+  pricePerKg:pricePerKg.value, wastePct:wastePct.value, quantity:quantity.value, discount:discount.value, vatPct:vatPct.value,
+  rect:{H:height.value,unitH:unitH.value,W:width.value,unitW:unitW.value,T:thickness.value,unitT:unitT.value},
+  round:{D:diameter.value,unitD:unitD.value,L:length.value,unitL:unitL.value},
+  ops:readOps()
+}}
+function applyState(s){
+  shapeSelect.value=s.shape||'rect'; shapeSelect.dispatchEvent(new Event('change'));
+  materialSelect.value=s.material||'steel'; density.value=s.density||'7.85';
+  pricePerKg.value=s.pricePerKg||'3'; wastePct.value=s.wastePct||'0'; quantity.value=s.quantity||'1'; discount.value=s.discount||'0'; vatPct.value=s.vatPct||'22';
+  height.value=s.rect?.H||'50'; unitH.value=s.rect?.unitH||'mm';
+  width.value=s.rect?.W||'50'; unitW.value=s.rect?.unitW||'mm';
+  thickness.value=s.rect?.T||'10'; unitT.value=s.rect?.unitT||'mm';
+  diameter.value=s.round?.D||'20'; unitD.value=s.round?.unitD||'mm';
+  length.value=s.round?.L||'100'; unitL.value=s.round?.unitL||'mm';
+  opsContainer.innerHTML=''; (s.ops||[]).forEach(o=>createOp(o));
+}
+
+const overlay=document.getElementById('offersOverlay');
+const offersGrid=document.getElementById('offersGrid');
+function openOffers(){overlay.style.display='flex';}
+function closeOffers(){overlay.style.display='none';}
+document.getElementById('closeOffers').onclick=closeOffers;
+
+// --- Offers (IndexedDB native) ---
+async function saveOffer() {
+  const name = offerName.value.trim();
+  if (!name) { alert('Vnesi ime ponudbe.'); return; }
+
+  const est = computeEstimate(false);
+  const data = captureState();
+
+  const existing = await idbFindByName(name);
+  let offer = existing ? existing : {};
+  if (!offer.id) offer.id = undefined;
+
+  offer.name = name;
+  offer.date = nowTs();
+  offer.summary = { qty: est.qty, total: est.total, perPiece: est.perPiece };
+  offer.data = data;
+
+  const id = await idbPut(offer);
+  currentOfferId = id;
+  alert('Ponudba shranjena.');
+  if (overlay.style.display !== 'none') renderOffers();
+}
+document.getElementById('saveOffer').onclick = ()=>saveOffer();
+
+async function loadOffer(id){
+  const o = await idbGet(id);
+  if(!o){alert('Ponudba ni najdena.');return;}
+  currentOfferId=o.id; offerName.value=o.name||''; applyState(o.data); computeEstimate(true); closeOffers(); window.scrollTo({top:0,behavior:'smooth'});
+}
+async function deleteOffer(id){
+  if(!confirm('Res izbrišem to ponudbo?')) return;
+  await idbDelete(id);
+  if(overlay.style.display!=='none') await renderOffers();
+  if(currentOfferId===id){currentOfferId=null;offerName.value='';}
+}
+document.getElementById('deleteCurrent').onclick=async()=>{
+  if(!currentOfferId){alert('Ni izbrane ponudbe.');return;}
+  await deleteOffer(currentOfferId); alert('Trenutna ponudba izbrisana.');
+}
+
+async function renderOffers(){
+  offersGrid.innerHTML='';
+  const q=(document.getElementById('offerSearch').value||'').toLowerCase();
+  const list=(await idbAll()).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+  const data=list.filter(o=> (o.name||'').toLowerCase().includes(q));
+  if(!data.length){offersGrid.innerHTML='<div class="muted">Ni shranjenih ponudb.</div>';return;}
+  for(const o of data){
+    const c=document.createElement('div'); c.className='offer-card';
+    const total= (o.summary && typeof o.summary.total==='number') ? formatMoney(o.summary.total) : '—';
+    const qty = (o.summary && o.summary.qty!=null) ? o.summary.qty : (o.data && o.data.quantity) ? o.data.quantity : '—';
+    const safeName = escapeHTML(o.name||'(brez imena)');
+    const safeDate = escapeHTML(o.date||'');
+    c.innerHTML=`
+      <h4>${safeName}</h4>
+      <div class="offer-meta">${safeDate} &nbsp;|&nbsp; Količina: ${qty}</div>
+      <div class="offer-meta"><strong>Skupaj:</strong> ${total}</div>
+      <div class="offer-actions">
+        <button class="btn small" onclick="loadOffer(${o.id})">Naloži</button>
+        <button class="btn small danger" onclick="deleteOffer(${o.id})">Izbriši</button>
+      </div>`;
+    offersGrid.appendChild(c);
+  }
+}
+document.getElementById('openOffers').onclick=async()=>{openOffers();await renderOffers();};
+document.getElementById('offerSearch').oninput=()=>renderOffers();
+
+// --- Export ---
+function download(filename, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type: 'application/octet-stream'}));
+  a.download = filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+document.getElementById('exportJson').onclick=async()=>{
+  const list=await idbAll();
+  download('ponudbe.json', JSON.stringify(list, null, 2));
+};
+document.getElementById('exportCsv').onclick=async()=>{
+  const list=await idbAll();
+  const rows = [['id','name','date','qty','total','perPiece']].concat(
+    list.map(o=>[o.id, o.name, o.date, o.summary?.qty ?? '', o.summary?.total ?? '', o.summary?.perPiece ?? ''])
+  );
+  const csv = rows.map(r=>r.map(x=>`"${String(x??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  download('ponudbe.csv', csv);
+};
+
+// --- Export "PDF" prek Print (stabilno na iOS) ---
+document.getElementById('exportPdf').onclick=()=>{
+  const name=(offerName.value||'(brez imena)');
+  const shape=shapeSelect.value;
+  const est=computeEstimate(false);
+  let dimLine='';
+  if(shape==='rect') dimLine = `Plošča: ${height.value}${unitH.value} × ${width.value}${unitW.value} × ${thickness.value}${unitT.value}`;
+  else dimLine = `Okroglo: Ø${diameter.value}${unitD.value} × ${length.value}${unitL.value}`;
+  const ops=readOps().map(o=>{
+    const cadH=o.cadUnit==='h'?o.cad:o.cad/60;
+    const netoH=o.netoUnit==='h'?o.neto:o.neto/60;
+    const tPerPiece=(cadH/(parseInt(quantity.value)||1))+netoH;
+    return {name:o.name||'Operacija', rate:o.rate||0, tPerPiece, tAll:tPerPiece*(parseInt(quantity.value)||1), costAll:tPerPiece*o.rate*(parseInt(quantity.value)||1)};
+  });
+
+  const win=window.open('', '_blank');
+  if(!win){ alert('Odpiranje okna blokirano. Dovoli popup za ustvarjanje PDF.'); return; }
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ponudba - ${name}</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111}
+    h1{font-size:20px;margin:0 0 8px 0}
+    .muted{color:#555}
+    table{border-collapse:collapse;width:100%;margin-top:10px}
+    th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;font-size:14px}
+    th{background:#f0f0f0}
+    .right{text-align:right}
+    .tot{font-weight:800}
+  </style></head><body>
+  <h1>Ponudba — CNC obdelava</h1>
+  <div class="muted">Ime ponudbe: ${escapeHTML(name)}<br>Datum: ${nowTs()}</div>
+  <p><strong>Material & količina</strong><br>
+  ${escapeHTML(document.getElementById('materialSelect').selectedOptions[0].text)}<br>
+  Dimenzije: ${escapeHTML(dimLine)}<br>
+  Količina: ${quantity.value} kos<br>
+  Cena materiala: ${pricePerKg.value} €/kg, Odpad: ${wastePct.value}%</p>
+
+  <table><thead><tr><th>Operacija</th><th>Urna postavka</th><th>Čas (na kos)</th><th>Čas (vsi)</th><th>Strošek (vsi)</th></tr></thead><tbody>
+  ${ops.map(o=>`<tr><td>${escapeHTML(o.name)}</td><td class="right">${o.rate.toFixed(2)} €/h</td><td class="right">${o.tPerPiece.toFixed(2)} h/kos</td><td class="right">${formatTimeHours(o.tAll)}</td><td class="right">${formatMoney(o.costAll)}</td></tr>`).join('')}
+  </tbody></table>
+
+  <p><strong>Povzetek stroškov</strong><br>
+  Teža (kos): ${est.mass_kg.toFixed(3)} kg (skupaj ${(est.mass_kg*(parseInt(quantity.value)||1)).toFixed(3)} kg)<br>
+  Material (z odpadom): ${formatMoney(est.material_cost)}<br>
+  Delo: ${formatMoney(est.totalLabourCost)}<br>
+  Popust: ${discount.value}%  |  DDV: ${vatPct.value}%<br>
+  Skupaj: ${formatMoney(est.total)}  |  Na kos: ${formatMoney(est.perPiece)}</p>
+
+  <div class="muted">Generirano iz CNC kalkulatorja</div>
+  <script>window.onload=function(){setTimeout(function(){window.print();},200);}</script>
+  </body></html>`);
+  win.document.close();
+};
+
+// Init
+createOp({name:'',cad:0,cadUnit:'h',neto:0,netoUnit:'min',rate:0});
+computeEstimate(true);
+
+// PWA: register service worker (lokalni sw)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/cnc/sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
